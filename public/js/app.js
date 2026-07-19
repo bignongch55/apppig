@@ -85,15 +85,26 @@
   function isOnLoginScreen() {
     return !lockedTable && state.mode === "staff" && !state.session;
   }
+  function isUserTyping() {
+    // ถ้าผู้ใช้กำลังโฟกัส/พิมพ์อยู่ในช่องกรอกใดๆ ให้เลี่ยงการ re-render ทั้งหน้าจากการรีเฟรชข้อมูลพื้นหลัง
+    // ไม่งั้นข้อความที่พิมพ์ค้างอยู่ (ที่ยังไม่ได้ sync เข้า state) จะถูกเขียนทับ/หาย ดูเหมือนหน้าเว็บ "รีเฟรชตลอดเวลา"
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }
+  function shouldSkipBackgroundRender() {
+    return isOnLoginScreen() || isUserTyping();
+  }
 
-  async function loadMenu() { state.menu = await api("/menu"); if (!isOnLoginScreen()) render(); }
-  async function loadUsers() { state.users = await api("/users"); if (!isOnLoginScreen()) render(); }
-  async function loadOrders() { state.orders = await api("/orders"); if (!isOnLoginScreen()) render(); }
+  async function loadMenu() { state.menu = await api("/menu"); if (!shouldSkipBackgroundRender()) render(); }
+  async function loadUsers() { state.users = await api("/users"); if (!shouldSkipBackgroundRender()) render(); }
+  async function loadOrders() { state.orders = await api("/orders"); if (!shouldSkipBackgroundRender()) render(); }
   async function loadTables() {
     state.tables = await api("/tables");
     if (state.table === null && !lockedTable) state.table = state.tables[0] ?? null;
     if (state.billingTable === null) state.billingTable = state.tables[0] ?? null;
-    if (!isOnLoginScreen()) render();
+    if (!shouldSkipBackgroundRender()) render();
   }
   async function loadReports() {
     state.reportsLoading = true;
@@ -848,9 +859,9 @@
     try {
       await loadOrders();
     } catch (e) { console.error(e); }
-    setInterval(() => { if (!isOnLoginScreen()) loadOrders().catch(() => {}); }, 4000);
-    setInterval(() => { if (!isOnLoginScreen()) loadMenu().catch(() => {}); }, 8000);
-    setInterval(() => { if (!isOnLoginScreen()) loadTables().catch(() => {}); }, 15000);
+    setInterval(() => { if (!shouldSkipBackgroundRender()) loadOrders().catch(() => {}); }, 4000);
+    setInterval(() => { if (!shouldSkipBackgroundRender()) loadMenu().catch(() => {}); }, 8000);
+    setInterval(() => { if (!shouldSkipBackgroundRender()) loadTables().catch(() => {}); }, 15000);
   }
 
   boot();
