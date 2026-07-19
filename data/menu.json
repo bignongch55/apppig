@@ -1,0 +1,50 @@
+[
+  {
+    "id": "set1",
+    "name": "หมูกระทะเซ็ต (2 ท่าน)",
+    "unit": "ชุด",
+    "price": 199,
+    "category": "food",
+    "image": "/uploads/1784451630329-menu-image.png"
+  },
+  {
+    "id": "pork",
+    "name": "หมูสามชั้น (จานเพิ่ม)",
+    "unit": "จาน",
+    "price": 89,
+    "category": "food",
+    "image": "/uploads/1784453163687-menu-image.png"
+  },
+  {
+    "id": "veg",
+    "name": "ผักรวม (จานเพิ่ม)",
+    "unit": "จาน",
+    "price": 49,
+    "category": "food",
+    "image": "/uploads/1784453266297-menu-image.png"
+  },
+  {
+    "id": "jaew",
+    "name": "แจ่วฮ้อน",
+    "unit": "ถ้วย",
+    "price": 59,
+    "category": "food",
+    "image": "/uploads/1784453314595-menu-image.png"
+  },
+  {
+    "id": "water",
+    "name": "น้ำเปล่า",
+    "unit": "ขวด",
+    "price": 15,
+    "category": "drink",
+    "image": "/uploads/1784452334533-menu-image.png"
+  },
+  {
+    "id": "ice",
+    "name": "น้ำแข็ง",
+    "unit": "ถุง",
+    "price": 10,
+    "category": "drink",
+    "image": "/uploads/1784452481224-menu-image.png"
+  }
+]

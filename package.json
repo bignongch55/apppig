@@ -1,0 +1,16 @@
+{
+  "name": "moo-krata-order",
+  "version": "1.0.0",
+  "description": "ระบบสั่งอาหารหมูกระทะ - ธีมร้านอาหารสีเขียวเหลืองทันสมัย",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
