@@ -46,4 +46,3 @@ moo-krata-node/
 - การเข้ารหัสรหัสผ่าน (เช่น bcrypt)
 - ระบบ session/JWT ที่ปลอดภัย
 - HTTPS และการจำกัดสิทธิ์การเข้าถึง API
-"# apppig2" 
