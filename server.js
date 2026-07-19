@@ -274,6 +274,23 @@ app.put("/api/orders/:id", (req, res) => {
   res.json(orders[idx]);
 });
 
+// ลบรายการอาหารรายการเดียวออกจากออเดอร์ (เช่น ลูกค้ายกเลิกรายการนั้น) — ให้แอดมิน/พนักงานหน้าครัวลบได้
+app.delete("/api/orders/:id/items/:index", (req, res) => {
+  const orders = readJSON(FILES.orders);
+  const idx = orders.findIndex((o) => o.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "ไม่พบออเดอร์นี้" });
+  const order = orders[idx];
+  const itemIndex = Number(req.params.index);
+  if (!Array.isArray(order.items) || !Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= order.items.length) {
+    return res.status(404).json({ error: "ไม่พบรายการอาหารนี้ในออเดอร์" });
+  }
+  order.items = order.items.filter((_, i) => i !== itemIndex);
+  order.total = order.items.reduce((s, it) => s + Number(it.price || 0) * Number(it.qty || 0), 0);
+  orders[idx] = order;
+  writeJSON(FILES.orders, orders);
+  res.json(order);
+});
+
 app.post("/api/orders/close-bill", (req, res) => {
   const { table } = req.body || {};
   const orders = readJSON(FILES.orders);

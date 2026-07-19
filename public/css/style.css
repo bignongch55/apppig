@@ -163,7 +163,10 @@ a{color:inherit;}
 .my-orders-title{ font-size:15.5px; font-weight:700; margin-bottom:10px; }
 .my-order-card{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius-md); padding:11px 13px; margin-bottom:8px; }
 .my-order-head{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--stone); margin-bottom:6px; }
-.my-order-line{ display:flex; justify-content:space-between; font-size:13px; padding:2px 0; }
+.my-order-line{ display:flex; align-items:center; justify-content:space-between; font-size:13px; padding:3px 0; gap:8px; }
+.my-order-line-item{ display:flex; align-items:center; gap:7px; min-width:0; }
+.my-order-line-img{ width:24px; height:24px; border-radius:6px; overflow:hidden; flex:none; display:flex; align-items:center; justify-content:center; background:rgba(47,122,61,.08); font-size:13px; }
+.my-order-line-img img{ width:100%; height:100%; object-fit:cover; }
 .my-order-total{ display:flex; justify-content:space-between; font-weight:800; padding-top:8px; font-size:13.5px; }
 
 /* ---------- Status pills ---------- */
@@ -185,7 +188,18 @@ a{color:inherit;}
 .ticket-head{ display:flex; justify-content:space-between; font-weight:700; font-size:14px; margin-bottom:8px; }
 .ticket-time{ font-weight:400; color:var(--stone); font-size:12px; }
 .ticket-items{ list-style:none; padding:0; margin:0 0 12px; font-size:13.5px; }
-.ticket-items li{ display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed var(--line); }
+.ticket-items li{ display:flex; align-items:center; justify-content:space-between; padding:3px 0; border-bottom:1px dashed var(--line); gap:8px; }
+.ticket-item-name{ display:flex; align-items:center; gap:7px; min-width:0; }
+.ticket-item-name > span:last-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ticket-item-img{ width:26px; height:26px; border-radius:7px; overflow:hidden; flex:none; display:flex; align-items:center; justify-content:center; background:rgba(47,122,61,.08); font-size:14px; }
+.ticket-item-img img{ width:100%; height:100%; object-fit:cover; }
+.ticket-item-right{ display:flex; align-items:center; gap:8px; flex:none; }
+.btn-removeitem{
+  width:22px; height:22px; border-radius:999px; border:1.5px solid rgba(232,93,61,.4);
+  background:rgba(232,93,61,.12); color:var(--chili); cursor:pointer; font-size:11px; line-height:1;
+  display:flex; align-items:center; justify-content:center; flex:none;
+}
+.btn-removeitem:hover{ background:rgba(232,93,61,.25); }
 .ticket-foot{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
 .btn-advance{
   display:flex; align-items:center; gap:5px; background:var(--leaf); color:#fff; border:none;

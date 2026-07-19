@@ -197,7 +197,7 @@
     return Object.entries(state.cart).map(([id, q]) => {
       const m = state.menu.find((x) => x.id === id);
       if (!m) return null;
-      return { id, name: m.name, unit: m.unit, price: m.price, qty: q };
+      return { id, name: m.name, unit: m.unit, price: m.price, image: m.image || "", qty: q };
     }).filter(Boolean);
   }
 
@@ -205,7 +205,11 @@
     const items = state.menu.filter((m) => m.category === state.cat);
     const cartItems = cartItemsList();
     const cartTotal = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
-    const myOrders = state.orders.filter((o) => state.myOrderIds.includes(o.id));
+    // แสดงออเดอร์ทั้งหมดของโต๊ะนี้ที่ยังไม่ปิดบิล (อิงจากข้อมูลจริงบนเซิร์ฟเวอร์ ไม่ใช่ความจำในเบราว์เซอร์)
+    // เพื่อให้ต่อให้ลูกค้าสแกน QR code สั่งซ้ำหลายรอบ หรือปิดหน้าแล้วเปิดใหม่ ก็ยังเห็นรายการที่สั่งไปแล้วครบทุกรอบ ไม่หายไปไหน
+    const myOrders = state.orders
+      .filter((o) => o.table === state.table && !o.paid)
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     const myGrandTotal = myOrders.reduce((s, o) => s + o.total, 0);
 
     return `
@@ -256,7 +260,14 @@
                   <span>${fmtTime(o.createdAt)}</span>
                   <span class="status-pill ${statusMeta(o.status).cls}">${statusMeta(o.status).label}</span>
                 </div>
-                ${o.items.map((it) => `<div class="my-order-line"><span>${esc(it.name)} x${it.qty}</span><span>฿${money(it.price * it.qty)}</span></div>`).join("")}
+                ${o.items.map((it) => `
+                  <div class="my-order-line">
+                    <span class="my-order-line-item">
+                      <span class="my-order-line-img">${it.image ? `<img src="${esc(it.image)}" alt="${esc(it.name)}"/>` : "🍽️"}</span>
+                      <span>${esc(it.name)} x${it.qty}</span>
+                    </span>
+                    <span>฿${money(it.price * it.qty)}</span>
+                  </div>`).join("")}
               </div>`).join("")}
             <div class="my-order-total"><span>ยอดรวมทั้งหมด</span><span>฿${money(myGrandTotal)}</span></div>
           </div>` : ""}
@@ -400,7 +411,17 @@
           return `
             <div class="ticket ${meta.cls}">
               <div class="ticket-head"><span>โต๊ะ ${o.table}</span><span class="ticket-time">${fmtTime(o.createdAt)}</span></div>
-              <ul class="ticket-items">${o.items.map((it) => `<li><span>${esc(it.name)}</span><span>x${it.qty}</span></li>`).join("")}</ul>
+              <ul class="ticket-items">${o.items.map((it, i) => `
+                <li>
+                  <span class="ticket-item-name">
+                    <span class="ticket-item-img">${it.image ? `<img src="${esc(it.image)}" alt="${esc(it.name)}"/>` : "🍽️"}</span>
+                    <span>${esc(it.name)}</span>
+                  </span>
+                  <span class="ticket-item-right">
+                    <span>x${it.qty}</span>
+                    <button class="btn-removeitem no-print" title="ลบรายการนี้ (ลูกค้ายกเลิก)" data-removeorderitem="${o.id}::${i}">✕</button>
+                  </span>
+                </li>`).join("")}</ul>
               <div class="ticket-foot">
                 <span class="status-pill ${meta.cls}">🔥 ${meta.label}</span>
                 ${meta.next ? `<button class="btn-advance" data-advance="${o.id}">${meta.nextIcon} ${meta.nextLabel}</button>` : ""}
@@ -417,6 +438,17 @@
     if (!meta.next) return;
     await api(`/orders/${id}`, { method: "PUT", body: JSON.stringify({ status: meta.next }) });
     await loadOrders();
+  }
+
+  // แอดมิน/พนักงานหน้าครัวลบรายการอาหารรายการเดียวออกจากออเดอร์ (กรณีลูกค้ายกเลิกรายการนั้น)
+  async function removeOrderItem(orderId, itemIndex) {
+    if (!confirm("ลบรายการอาหารนี้ออกจากออเดอร์ใช่หรือไม่?")) return;
+    try {
+      await api(`/orders/${orderId}/items/${itemIndex}`, { method: "DELETE" });
+      await loadOrders();
+    } catch (e) {
+      alert(e.message);
+    }
   }
 
   /* ---------------- BILLING ---------------- */
@@ -778,6 +810,10 @@
     const refreshOrders = document.getElementById("refreshOrders");
     if (refreshOrders) refreshOrders.addEventListener("click", loadOrders);
     root.querySelectorAll("[data-advance]").forEach((el) => el.addEventListener("click", () => advanceOrder(el.dataset.advance)));
+    root.querySelectorAll("[data-removeorderitem]").forEach((el) => el.addEventListener("click", () => {
+      const [orderId, itemIndex] = el.dataset.removeorderitem.split("::");
+      removeOrderItem(orderId, Number(itemIndex));
+    }));
 
     root.querySelectorAll("[data-billtable]").forEach((el) => el.addEventListener("click", () => { state.billingTable = Number(el.dataset.billtable); render(); }));
     const refreshBilling = document.getElementById("refreshBilling");
