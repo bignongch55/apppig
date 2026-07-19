@@ -82,14 +82,18 @@
     return res.json();
   }
 
-  async function loadMenu() { state.menu = await api("/menu"); render(); }
-  async function loadUsers() { state.users = await api("/users"); render(); }
-  async function loadOrders() { state.orders = await api("/orders"); render(); }
+  function isOnLoginScreen() {
+    return !lockedTable && state.mode === "staff" && !state.session;
+  }
+
+  async function loadMenu() { state.menu = await api("/menu"); if (!isOnLoginScreen()) render(); }
+  async function loadUsers() { state.users = await api("/users"); if (!isOnLoginScreen()) render(); }
+  async function loadOrders() { state.orders = await api("/orders"); if (!isOnLoginScreen()) render(); }
   async function loadTables() {
     state.tables = await api("/tables");
     if (state.table === null && !lockedTable) state.table = state.tables[0] ?? null;
     if (state.billingTable === null) state.billingTable = state.tables[0] ?? null;
-    render();
+    if (!isOnLoginScreen()) render();
   }
   async function loadReports() {
     state.reportsLoading = true;
@@ -844,9 +848,9 @@
     try {
       await loadOrders();
     } catch (e) { console.error(e); }
-    setInterval(() => { loadOrders().catch(() => {}); }, 4000);
-    setInterval(() => { loadMenu().catch(() => {}); }, 8000);
-    setInterval(() => { loadTables().catch(() => {}); }, 15000);
+    setInterval(() => { if (!isOnLoginScreen()) loadOrders().catch(() => {}); }, 4000);
+    setInterval(() => { if (!isOnLoginScreen()) loadMenu().catch(() => {}); }, 8000);
+    setInterval(() => { if (!isOnLoginScreen()) loadTables().catch(() => {}); }, 15000);
   }
 
   boot();

@@ -5,7 +5,7 @@
     "unit": "ชุด",
     "price": 199,
     "category": "food",
-    "image": "/uploads/1784451630329-menu-image.png"
+    "image": ""
   },
   {
     "id": "pork",
@@ -13,7 +13,7 @@
     "unit": "จาน",
     "price": 89,
     "category": "food",
-    "image": "/uploads/1784453163687-menu-image.png"
+    "image": ""
   },
   {
     "id": "veg",
@@ -21,7 +21,7 @@
     "unit": "จาน",
     "price": 49,
     "category": "food",
-    "image": "/uploads/1784453266297-menu-image.png"
+    "image": ""
   },
   {
     "id": "jaew",
@@ -29,7 +29,7 @@
     "unit": "ถ้วย",
     "price": 59,
     "category": "food",
-    "image": "/uploads/1784453314595-menu-image.png"
+    "image": ""
   },
   {
     "id": "water",
@@ -37,7 +37,15 @@
     "unit": "ขวด",
     "price": 15,
     "category": "drink",
-    "image": "/uploads/1784452334533-menu-image.png"
+    "image": ""
+  },
+  {
+    "id": "pepsi",
+    "name": "เป๊ปซี่",
+    "unit": "ขวด",
+    "price": 20,
+    "category": "drink",
+    "image": ""
   },
   {
     "id": "ice",
@@ -45,6 +53,6 @@
     "unit": "ถุง",
     "price": 10,
     "category": "drink",
-    "image": "/uploads/1784452481224-menu-image.png"
+    "image": ""
   }
 ]
