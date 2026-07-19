@@ -1,0 +1,19 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = "npm install"
+
+[functions]
+  node_bundler = "esbuild"
+
+# หน้าเว็บ (public/) ถูก host แบบ static ตามปกติ
+# ส่วน /api/* และ /uploads/* จะถูกส่งไปให้ Netlify Functions จัดการแทน
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/uploads/*"
+  to = "/.netlify/functions/uploads/:splat"
+  status = 200
