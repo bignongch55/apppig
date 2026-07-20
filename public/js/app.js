@@ -57,7 +57,7 @@
   }
   // แปะ URL ของ Google Apps Script Web App ที่ deploy ไว้ตรงนี้ (ดูวิธีหาใน README-APPS-SCRIPT.md)
   // ตัวอย่าง: "https://script.google.com/macros/s/AKfycb.../exec"
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZS4xyepMV9W8h8L8jzYR__lS6FyRsZQsldYyiQf-KzTAmpa4ldyJB4TC_D_5AY0rDGA/exec";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxsDZF3Wg82dH3W4kUmi0GJmAMLTWrBwI_JaNfXT8YN8QqO26QbcWjQieclyf9SG3mb/exec";
 
   async function api(path, opts) {
     // กัน "หน้าค้าง" เวลาเซิร์ฟเวอร์ตอบช้าหรือไม่ตอบเลย: ตัดการเชื่อมต่อเองหลัง 20 วินาที
@@ -119,6 +119,12 @@
   function shouldSkipBackgroundRender() {
     return isOnLoginScreen() || isUserTyping();
   }
+  // เข้มกว่า shouldSkipBackgroundRender: ใช้เช็คว่าจะ "ยิง request ไปเซิร์ฟเวอร์เลยไหม" ไม่ใช่แค่ข้าม render
+  // ตอนอยู่หน้า login ยังไม่มีอะไรให้แสดง หรือสลับไป tab อื่นอยู่ (ไม่มีใครมองจอ) ก็ไม่จำเป็นต้อง poll เลย
+  // ช่วยลดโหลดไป Google Apps Script/Sheets ลงไปได้มากเวลามีหลายเครื่องเปิดค้างไว้
+  function shouldSkipBackgroundFetch() {
+    return isOnLoginScreen() || document.hidden;
+  }
 
   async function loadMenu() { state.menu = await api("/menu"); if (!shouldSkipBackgroundRender()) render(); }
   async function loadUsers() { state.users = await api("/users"); if (!shouldSkipBackgroundRender()) render(); }
@@ -176,7 +182,7 @@
             <div class="brand-id">
               <div class="brand-badge">🐷🔥</div>
               <div>
-                <div class="brand-name">หมูกระทะ ร้านเรา</div>
+                <div class="brand-name">พิชชาหมูกระทะ</div>
                 <div class="brand-sub">สั่งอาหารง่าย ๆ ผ่านมือถือ</div>
               </div>
             </div>
@@ -190,7 +196,7 @@
           <div class="brand-id">
             <div class="brand-badge">🐷🔥</div>
             <div>
-              <div class="brand-name">หมูกระทะ ร้านเรา</div>
+              <div class="brand-name">พิชชาหมูกระทะ</div>
               <div class="brand-sub">สั่งอาหารง่าย ๆ ผ่านมือถือ</div>
             </div>
           </div>
@@ -496,7 +502,7 @@
         <div class="receipt-wrap">
           <div class="receipt">
             <div class="receipt-head">
-              <div class="receipt-shop">หมูกระทะ ร้านเรา</div>
+              <div class="receipt-shop">พิชชาหมูกระทะ</div>
               <div class="receipt-sub">ใบสรุปรายการ · โต๊ะ ${table}</div>
               <div class="receipt-sub">${new Date().toLocaleString("th-TH")}</div>
             </div>
@@ -918,9 +924,17 @@
     try {
       await loadOrders();
     } catch (e) { console.error(e); }
-    setInterval(() => { if (!shouldSkipBackgroundRender()) loadOrders().catch(() => {}); }, 4000);
-    setInterval(() => { if (!shouldSkipBackgroundRender()) loadMenu().catch(() => {}); }, 8000);
-    setInterval(() => { if (!shouldSkipBackgroundRender()) loadTables().catch(() => {}); }, 15000);
+    setInterval(() => { if (!shouldSkipBackgroundFetch()) loadOrders().catch(() => {}); }, 4000);
+    setInterval(() => { if (!shouldSkipBackgroundFetch()) loadMenu().catch(() => {}); }, 10000);
+    setInterval(() => { if (!shouldSkipBackgroundFetch()) loadTables().catch(() => {}); }, 20000);
+    // กลับมาที่ tab นี้อีกครั้ง -> รีเฟรชทันที 1 ครั้ง กันข้อมูลค้างจากตอนที่ไม่ได้ poll ระหว่างสลับ tab
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && !isOnLoginScreen()) {
+        loadOrders().catch(() => {});
+        loadMenu().catch(() => {});
+        loadTables().catch(() => {});
+      }
+    });
   }
 
   boot();

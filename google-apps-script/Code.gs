@@ -23,6 +23,35 @@ function getSheet_(key) {
   return sheet;
 }
 
+// ---- แคชข้อมูลแต่ละชีตสั้นๆ ไว้ใน CacheService (แชร์ข้ามทุกครั้งที่มีคนเรียก ไม่ใช่แค่ในเครื่องเดียว) ----
+// เพื่อลดจำนวนครั้งที่ต้องอ่านทั้งชีตจริงๆ เวลามีหลายเครื่อง/หลาย tab poll ข้อมูลพร้อมกันถี่ๆ
+// (นี่คือจุดที่ทำให้เว็บช้าที่สุด เพราะ getDataRange().getValues() คือการอ่านทั้งชีตทุกครั้ง)
+const CACHE_TTL_SEC = 5;
+function getCache_() {
+  return CacheService.getScriptCache();
+}
+function readRowsCached_(key) {
+  try {
+    const raw = getCache_().get("rows_" + key);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    // ข้ามไปอ่านสดถ้า cache มีปัญหา (เช่น parse ไม่ผ่าน)
+  }
+  return null;
+}
+function setRowsCache_(key, rows) {
+  try {
+    // CacheService จำกัดค่าละไม่เกิน ~100KB — ถ้าชีตใหญ่เกิน (เช่น Orders สะสมนานมาก) จะ put ไม่ผ่าน
+    // ก็แค่ข้ามการแคชไปเฉยๆ ไม่กระทบการทำงานถูกต้องของระบบ
+    getCache_().put("rows_" + key, JSON.stringify(rows), CACHE_TTL_SEC);
+  } catch (e) {}
+}
+function clearRowsCache_(key) {
+  try {
+    getCache_().remove("rows_" + key);
+  } catch (e) {}
+}
+
 // สร้างข้อมูลเริ่มต้น (เมนู/โต๊ะ/ผู้ใช้) ถ้ายังไม่มีเลย — เรียกซ้ำได้อย่างปลอดภัย
 function ensureSeed_() {
   const menu = getSheet_("MENU");
@@ -44,22 +73,30 @@ function ensureSeed_() {
 }
 
 // อ่านทุกแถวของชีตเป็น array ของ object ตามหัวตาราง พร้อมเลขแถวจริง (__row) ไว้ใช้แก้/ลบ
+// เช็ค cache ก่อนเสมอ ถ้ามีและยังไม่หมดอายุ (5 วิ) ก็ใช้เลย ไม่ต้องอ่านทั้งชีตซ้ำ
 function readRows_(key) {
+  const cached = readRowsCached_(key);
+  if (cached) return cached;
   const sheet = getSheet_(key);
   const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  const headers = values[0];
-  return values.slice(1).map((row, i) => {
-    const obj = { __row: i + 2 };
-    headers.forEach((h, idx) => (obj[h] = row[idx]));
-    return obj;
-  });
+  let rows = [];
+  if (values.length >= 2) {
+    const headers = values[0];
+    rows = values.slice(1).map((row, i) => {
+      const obj = { __row: i + 2 };
+      headers.forEach((h, idx) => (obj[h] = row[idx]));
+      return obj;
+    });
+  }
+  setRowsCache_(key, rows);
+  return rows;
 }
 
 function writeRow_(key, rowNumber, obj, headers) {
   const sheet = getSheet_(key);
   const values = headers.map((h) => (obj[h] !== undefined ? obj[h] : ""));
   sheet.getRange(rowNumber, 1, 1, headers.length).setValues([values]);
+  clearRowsCache_(key); // ข้อมูลเปลี่ยนแล้ว ต้องอ่านสดในครั้งถัดไป ไม่ใช้ของแคชเก่า
 }
 
 function appendRow_(key, obj) {
@@ -67,10 +104,12 @@ function appendRow_(key, obj) {
   const sheet = getSheet_(key);
   const values = def.headers.map((h) => (obj[h] !== undefined ? obj[h] : ""));
   sheet.appendRow(values);
+  clearRowsCache_(key);
 }
 
 function deleteRow_(key, rowNumber) {
   getSheet_(key).deleteRow(rowNumber);
+  clearRowsCache_(key);
 }
 
 function toMenuItem_(r) {
