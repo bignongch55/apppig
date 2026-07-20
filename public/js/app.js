@@ -55,17 +55,35 @@
   function fmtTime(iso) {
     return new Date(iso).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
   }
+  // แปะ URL ของ Google Apps Script Web App ที่ deploy ไว้ตรงนี้ (ดูวิธีหาใน README-APPS-SCRIPT.md)
+  // ตัวอย่าง: "https://script.google.com/macros/s/AKfycb.../exec"
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZS4xyepMV9W8h8L8jzYR__lS6FyRsZQsldYyiQf-KzTAmpa4ldyJB4TC_D_5AY0rDGA/exec";
+
   async function api(path, opts) {
-    // กัน "หน้าค้าง" เวลาเซิร์ฟเวอร์ตอบช้าหรือไม่ตอบเลย: ตัดการเชื่อมต่อเองหลัง 12 วินาที
+    // กัน "หน้าค้าง" เวลาเซิร์ฟเวอร์ตอบช้าหรือไม่ตอบเลย: ตัดการเชื่อมต่อเองหลัง 20 วินาที
+    // (Apps Script บางครั้ง cold start ช้ากว่า serverless function ทั่วไป โดยเฉพาะตอนอัปโหลดรูป)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const method = ((opts && opts.method) || "GET").toUpperCase();
     let res;
     try {
-      res = await fetch("/api" + path, {
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        ...opts,
-      });
+      if (method === "GET") {
+        // GET ธรรมดา ไม่มี custom header เพื่อเลี่ยง CORS preflight ที่ Apps Script รองรับได้ไม่ดี
+        res = await fetch(APPS_SCRIPT_URL + "?p=" + encodeURIComponent(path), {
+          method: "GET",
+          signal: controller.signal,
+        });
+      } else {
+        // ยุบ POST/PUT/DELETE ทั้งหมดเป็น POST เดียว พร้อมห่อ method/path/body ไว้ใน JSON
+        // ใช้ Content-Type: text/plain (ไม่ใช่ application/json) เพื่อให้ยังนับเป็น "simple request" ไม่โดน preflight
+        const bodyObj = opts && opts.body ? JSON.parse(opts.body) : {};
+        res = await fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ method, path, body: bodyObj }),
+          signal: controller.signal,
+        });
+      }
     } catch (err) {
       if (err.name === "AbortError") {
         throw new Error("การเชื่อมต่อล้าช้าเกินไป กรุณาลองใหม่อีกครั้ง");
@@ -74,12 +92,17 @@
     } finally {
       clearTimeout(timeoutId);
     }
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error || "เกิดข้อผิดพลาด");
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error("เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง");
     }
-    if (res.status === 204) return null;
-    return res.json();
+    // Apps Script Web App ตอบ HTTP 200 เสมอ (กำหนด status code เองไม่ได้) จึงเช็ค error จากฟิลด์ในตัว JSON แทน
+    if (data && typeof data === "object" && !Array.isArray(data) && data.error) {
+      throw new Error(data.error);
+    }
+    return data;
   }
 
   function isOnLoginScreen() {

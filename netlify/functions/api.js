@@ -1,47 +1,35 @@
 // netlify/functions/api.js
-// เวอร์ชัน Netlify: API เดิมทั้งหมดจาก server.js แต่เปลี่ยนที่เก็บข้อมูลจากไฟล์ .json
-// มาเป็น Netlify Database (Postgres) และเก็บรูปภาพด้วย Netlify Blobs แทนดิสก์
-// เพื่อไม่ให้ข้อมูล/รูปหายเวลา deploy ใหม่หรือ function เย็นตัวลง (cold start)
+// เวอร์ชัน Google Sheets: API ทั้งหมดอ่าน/เขียนข้อมูล เมนู/โต๊ะ/ผู้ใช้/ออเดอร์ ลงใน Google Sheet
+// รูปภาพเมนูเก็บที่ Netlify Blobs เหมือนเดิม แล้วเก็บลิงก์รูปไว้ในคอลัมน์ image ของชีต Menu
 const express = require("express");
 const serverless = require("serverless-http");
 const { getStore } = require("@netlify/blobs");
-const { sql, ensureSchema } = require("./lib/db");
+const db = require("./lib/sheets");
 
 const app = express();
 app.use(express.json({ limit: "8mb" }));
 
-// ทุก route ในไฟล์นี้จะถูก mount ที่ /api/* ผ่าน redirect ใน netlify.toml
 const router = express.Router();
 
-router.use(async (req, res, next) => {
-  try {
-    await ensureSchema();
-    next();
-  } catch (e) {
-    console.error("DB schema error:", e);
-    res.status(500).json({ error: "เชื่อมต่อฐานข้อมูลไม่ได้ ตรวจสอบว่าเปิดใช้งาน Netlify Database แล้วหรือยัง" });
-  }
-});
-
-function rowToOrder(r) {
-  return {
-    id: r.id,
-    table: r.table_number,
-    items: r.items,
-    total: Number(r.total),
-    status: r.status,
-    paid: r.paid,
-    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+// ครอบทุก route ด้วย try/catch เพื่อดักข้อผิดพลาดจาก Google Sheets (เช่น ยังไม่ได้ตั้งค่า)
+// แล้วตอบเป็นข้อความภาษาไทยที่เข้าใจง่าย แทนที่จะให้ function ล่มเฉยๆ
+function ah(fn) {
+  return async (req, res) => {
+    try {
+      await fn(req, res);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
+    }
   };
 }
 
 /* ---------------- เมนู ---------------- */
-router.get("/menu", async (req, res) => {
-  const rows = await sql`SELECT * FROM menu_items ORDER BY name`;
-  res.json(rows.map((m) => ({ ...m, price: Number(m.price) })));
-});
+router.get("/menu", ah(async (req, res) => {
+  res.json(await db.listMenu());
+}));
 
-router.post("/menu", async (req, res) => {
+router.post("/menu", ah(async (req, res) => {
   const { name, price, unit, category, image } = req.body || {};
   if (!name || price === undefined || price === "") {
     return res.status(400).json({ error: "กรุณากรอกชื่อเมนูและราคา" });
@@ -54,46 +42,33 @@ router.post("/menu", async (req, res) => {
     category: category || "food",
     image: image || "",
   };
-  await sql`
-    INSERT INTO menu_items (id, name, price, unit, category, image)
-    VALUES (${item.id}, ${item.name}, ${item.price}, ${item.unit}, ${item.category}, ${item.image})
-  `;
+  await db.addMenuItem(item);
   res.status(201).json(item);
-});
+}));
 
-router.put("/menu/:id", async (req, res) => {
-  const existing = await sql`SELECT * FROM menu_items WHERE id = ${req.params.id}`;
-  if (!existing.length) return res.status(404).json({ error: "ไม่พบเมนูนี้" });
-  const cur = existing[0];
-  const next = {
-    name: req.body.name ?? cur.name,
-    price: Number(req.body.price ?? cur.price),
-    unit: req.body.unit ?? cur.unit,
-    category: req.body.category ?? cur.category,
-    image: req.body.image ?? cur.image,
-  };
-  await sql`
-    UPDATE menu_items SET name=${next.name}, price=${next.price}, unit=${next.unit},
-      category=${next.category}, image=${next.image} WHERE id=${req.params.id}
-  `;
-  res.json({ id: req.params.id, ...next });
-});
+router.put("/menu/:id", ah(async (req, res) => {
+  const patch = {};
+  ["name", "price", "unit", "category", "image"].forEach((k) => {
+    if (req.body[k] !== undefined) patch[k] = k === "price" ? Number(req.body[k]) : req.body[k];
+  });
+  const updated = await db.updateMenuItem(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: "ไม่พบเมนูนี้" });
+  res.json(updated);
+}));
 
-router.delete("/menu/:id", async (req, res) => {
-  await sql`DELETE FROM menu_items WHERE id = ${req.params.id}`;
+router.delete("/menu/:id", ah(async (req, res) => {
+  await db.deleteMenuItem(req.params.id);
   res.json({ ok: true });
-});
+}));
 
 /* ---------------- โต๊ะ ---------------- */
-router.get("/tables", async (req, res) => {
-  const rows = await sql`SELECT number FROM restaurant_tables ORDER BY number`;
-  res.json(rows.map((r) => r.number));
-});
+router.get("/tables", ah(async (req, res) => {
+  res.json(await db.listTables());
+}));
 
-router.post("/tables", async (req, res) => {
+router.post("/tables", ah(async (req, res) => {
   let { number } = req.body || {};
-  const existing = await sql`SELECT number FROM restaurant_tables ORDER BY number`;
-  const tables = existing.map((r) => r.number);
+  const tables = await db.listTables();
   if (number === undefined || number === null || number === "") {
     number = (tables.length ? Math.max(...tables) : 0) + 1;
   } else {
@@ -105,26 +80,23 @@ router.post("/tables", async (req, res) => {
   if (tables.includes(number)) {
     return res.status(409).json({ error: "มีโต๊ะนี้อยู่แล้ว" });
   }
-  await sql`INSERT INTO restaurant_tables (number) VALUES (${number})`;
-  const next = [...tables, number].sort((a, b) => a - b);
-  res.status(201).json({ tables: next });
-});
+  await db.addTable(number);
+  res.status(201).json({ tables: [...tables, number].sort((a, b) => a - b) });
+}));
 
-router.delete("/tables/:number", async (req, res) => {
+router.delete("/tables/:number", ah(async (req, res) => {
   const num = Number(req.params.number);
-  const openOrders = await sql`
-    SELECT id FROM orders WHERE table_number = ${num} AND paid = false LIMIT 1
-  `;
-  if (openOrders.length) {
+  const orders = await db.listOrders();
+  const hasOpen = orders.some((o) => o.table === num && !o.paid);
+  if (hasOpen) {
     return res.status(409).json({ error: "โต๊ะนี้ยังมีบิลค้างชำระอยู่ ปิดบิลก่อนจึงจะลบโต๊ะได้" });
   }
-  await sql`DELETE FROM restaurant_tables WHERE number = ${num}`;
-  const rows = await sql`SELECT number FROM restaurant_tables ORDER BY number`;
-  res.json({ tables: rows.map((r) => r.number) });
-});
+  await db.deleteTable(num);
+  res.json({ tables: await db.listTables() });
+}));
 
 /* ---------------- อัปโหลดรูปภาพเมนู (เก็บใน Netlify Blobs แทนดิสก์) ---------------- */
-router.post("/upload-image", async (req, res) => {
+router.post("/upload-image", ah(async (req, res) => {
   const { data, filename } = req.body || {};
   if (!data || typeof data !== "string") {
     return res.status(400).json({ error: "ไม่พบข้อมูลรูปภาพ" });
@@ -145,18 +117,16 @@ router.post("/upload-image", async (req, res) => {
   const store = getStore("menu-images");
   await store.set(key, buffer, { metadata: { contentType: mime } });
   res.status(201).json({ url: `/uploads/${key}` });
-});
+}));
 
 /* ---------------- รายงานสรุปยอดขาย ---------------- */
-router.get("/reports/summary", async (req, res) => {
+router.get("/reports/summary", ah(async (req, res) => {
   const { from, to } = req.query || {};
   const fromDate = from ? `${from}T00:00:00Z` : "1970-01-01T00:00:00Z";
   const toDate = to ? `${to}T23:59:59Z` : "9999-12-31T23:59:59Z";
 
-  const rows = await sql`
-    SELECT * FROM orders WHERE created_at >= ${fromDate} AND created_at <= ${toDate}
-  `;
-  const inRange = rows.map(rowToOrder);
+  const all = await db.listOrders();
+  const inRange = all.filter((o) => o.createdAt >= fromDate && o.createdAt <= toDate);
   const paidOrders = inRange.filter((o) => o.paid);
   const pendingOrders = inRange.filter((o) => !o.paid);
 
@@ -165,7 +135,7 @@ router.get("/reports/summary", async (req, res) => {
 
   const byDay = {};
   paidOrders.forEach((o) => {
-    const day = o.createdAt.slice(0, 10);
+    const day = (o.createdAt || "").slice(0, 10);
     byDay[day] = (byDay[day] || 0) + Number(o.total || 0);
   });
   const dailyRevenue = Object.entries(byDay)
@@ -191,44 +161,39 @@ router.get("/reports/summary", async (req, res) => {
     dailyRevenue,
     topItems,
   });
-});
+}));
 
-/* ---------------- ผู้ใช้งาน / เข้าสู่ระบบ ---------------- */
-router.get("/users", async (req, res) => {
-  const rows = await sql`SELECT username, role FROM app_users ORDER BY username`;
-  res.json(rows);
-});
+/* ---------------- ผู้ใช้ทุกคนของเว็บ ---------------- */
+router.get("/users", ah(async (req, res) => {
+  res.json(await db.listUsers());
+}));
 
-router.post("/users", async (req, res) => {
+router.post("/users", ah(async (req, res) => {
   const { username, password, role } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: "กรอกชื่อผู้ใช้และรหัสผ่านให้ครบ" });
-  const existing = await sql`SELECT username FROM app_users WHERE username = ${username}`;
-  if (existing.length) return res.status(409).json({ error: "มีชื่อผู้ใช้นี้อยู่แล้ว" });
-  await sql`INSERT INTO app_users (username, password, role) VALUES (${username}, ${password}, ${role || "staff"})`;
+  if (await db.userExists(username)) return res.status(409).json({ error: "มีชื่อผู้ใช้นี้อยู่แล้ว" });
+  await db.addUser({ username, password, role: role || "staff" });
   res.status(201).json({ username, role: role || "staff" });
-});
+}));
 
-router.delete("/users/:username", async (req, res) => {
-  await sql`DELETE FROM app_users WHERE username = ${req.params.username}`;
+router.delete("/users/:username", ah(async (req, res) => {
+  await db.deleteUser(req.params.username);
   res.json({ ok: true });
-});
+}));
 
-router.post("/login", async (req, res) => {
+router.post("/login", ah(async (req, res) => {
   const { username, password } = req.body || {};
-  const rows = await sql`
-    SELECT username, role FROM app_users WHERE username = ${username} AND password = ${password}
-  `;
-  if (!rows.length) return res.status(401).json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
-  res.json(rows[0]);
-});
+  const user = await db.findUser(username, password);
+  if (!user) return res.status(401).json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
+  res.json(user);
+}));
 
 /* ---------------- ออเดอร์ ---------------- */
-router.get("/orders", async (req, res) => {
-  const rows = await sql`SELECT * FROM orders ORDER BY created_at`;
-  res.json(rows.map(rowToOrder));
-});
+router.get("/orders", ah(async (req, res) => {
+  res.json(await db.listOrders());
+}));
 
-router.post("/orders", async (req, res) => {
+router.post("/orders", ah(async (req, res) => {
   const { table, items, total } = req.body || {};
   if (!table || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "ข้อมูลออเดอร์ไม่ครบถ้วน" });
@@ -242,47 +207,29 @@ router.post("/orders", async (req, res) => {
     paid: false,
     createdAt: new Date().toISOString(),
   };
-  await sql`
-    INSERT INTO orders (id, table_number, items, total, status, paid, created_at)
-    VALUES (${order.id}, ${order.table}, ${JSON.stringify(order.items)}, ${order.total}, ${order.status}, ${order.paid}, ${order.createdAt})
-  `;
+  await db.addOrder(order);
   res.status(201).json(order);
-});
+}));
 
-router.put("/orders/:id", async (req, res) => {
-  const rows = await sql`SELECT * FROM orders WHERE id = ${req.params.id}`;
-  if (!rows.length) return res.status(404).json({ error: "ไม่พบออเดอร์นี้" });
-  const cur = rowToOrder(rows[0]);
-  const next = { ...cur, ...req.body };
-  await sql`
-    UPDATE orders SET table_number=${next.table}, items=${JSON.stringify(next.items)},
-      total=${next.total}, status=${next.status}, paid=${next.paid} WHERE id=${req.params.id}
-  `;
-  res.json(next);
-});
+router.put("/orders/:id", ah(async (req, res) => {
+  const updated = await db.updateOrder(req.params.id, req.body || {});
+  if (!updated) return res.status(404).json({ error: "ไม่พบออเดอร์นี้" });
+  res.json(updated);
+}));
 
 // ลบรายการอาหารรายการเดียวออกจากออเดอร์ (เช่น ลูกค้ายกเลิกรายการนั้น)
-router.delete("/orders/:id/items/:index", async (req, res) => {
-  const rows = await sql`SELECT * FROM orders WHERE id = ${req.params.id}`;
-  if (!rows.length) return res.status(404).json({ error: "ไม่พบออเดอร์นี้" });
-  const order = rowToOrder(rows[0]);
+router.delete("/orders/:id/items/:index", ah(async (req, res) => {
   const itemIndex = Number(req.params.index);
-  if (!Array.isArray(order.items) || !Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= order.items.length) {
-    return res.status(404).json({ error: "ไม่พบรายการอาหารนี้ในออเดอร์" });
-  }
-  order.items = order.items.filter((_, i) => i !== itemIndex);
-  order.total = order.items.reduce((s, it) => s + Number(it.price || 0) * Number(it.qty || 0), 0);
-  await sql`
-    UPDATE orders SET items=${JSON.stringify(order.items)}, total=${order.total} WHERE id=${req.params.id}
-  `;
-  res.json(order);
-});
+  const updated = await db.deleteOrderItem(req.params.id, itemIndex);
+  if (!updated) return res.status(404).json({ error: "ไม่พบออเดอร์หรือรายการอาหารนี้" });
+  res.json(updated);
+}));
 
-router.post("/orders/close-bill", async (req, res) => {
+router.post("/orders/close-bill", ah(async (req, res) => {
   const { table } = req.body || {};
-  await sql`UPDATE orders SET paid = true WHERE table_number = ${table} AND paid = false`;
+  await db.closeBill(table);
   res.json({ ok: true });
-});
+}));
 
 app.use("/api", router);
 app.use("/", router); // เผื่อกรณี Netlify ส่ง path มาแบบตัด prefix ออกแล้ว
